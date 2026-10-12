@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 import plotly.express as px
+from scipy.stats import norm
 
 st.title("National Incident-Based Reporting System (NIBRS)")
 
@@ -135,6 +136,7 @@ st.caption("Cleaning the data: removing unnecessary columns")
 
 columns_to_keep = [
     "estimate",
+    "estimate_standard_error",
     "indicator_name",
     "estimate_type",
     "estimate_domain_1",
@@ -271,8 +273,107 @@ def validate_nibrs_data(df_nibrs):
     # check required columns presence
     expected_col = ["estimate",
         "indicator_name",
+        "estimate_standard_error",
         "estimate_type",
         "estimate_domain_1",
         "estimate_domain_2",
         "population_estimate",
         "time_series_start_year"]
+
+
+st.caption("doing a statistical test")
+st.caption("a statistical text, a suitable test depends on whether the dataset provides actual counts," \
+"sample sizes, standard errors, or confidence intervals.")
+
+# 1. Select the firearm percentage estimates
+firearm_data = df_homicide[
+    df_homicide["estimate_domain_1"].astype(str).str.strip().str.lower().eq("weapon involved")
+    & df_homicide["estimate_domain_2"].astype(str).str.strip().str.lower().eq("firearms")
+    & df_homicide["estimate_type"].astype(str).str.contains(
+        "percentage|percent", case=False, na=False
+    )
+].copy()
+
+# 2. Convert the required columns to numeric
+firearm_data["time_series_start_year"] = pd.to_numeric(
+    firearm_data["time_series_start_year"], errors="coerce"
+)
+firearm_data["estimate"] = pd.to_numeric(
+    firearm_data["estimate"], errors="coerce"
+)
+
+# Check whether the dataset contains a standard-error column
+se_col = "estimate_standard_error"
+
+st.subheader("Check data for the statistical test")
+
+if se_col not in firearm_data.columns:
+    st.error(
+        "A standard-error column was not found. "
+        "Inspect df_homicide.columns before choosing the test."
+    )
+else:
+    firearm_data[se_col] = pd.to_numeric(
+        firearm_data[se_col], errors="coerce"
+    )
+
+    # 3. Keep only the years we want to compare
+    comparison = firearm_data[
+        firearm_data["time_series_start_year"].isin([2022, 2024])
+    ].dropna(subset=["estimate", se_col])
+
+    st.dataframe(
+        comparison[
+            ["time_series_start_year", "estimate", se_col]
+        ].sort_values("time_series_start_year")
+    )
+
+    # 4. Test only if there is exactly one valid estimate per year
+    counts = comparison["time_series_start_year"].value_counts()
+
+    if counts.get(2022, 0) != 1 or counts.get(2024, 0) != 1:
+        st.warning(
+            "There must be exactly one valid firearm percentage estimate "
+            "for each year. Check the filtered rows before testing."
+        )
+    else:
+        row_2022 = comparison[
+            comparison["time_series_start_year"] == 2022
+        ].iloc[0]
+
+        row_2024 = comparison[
+            comparison["time_series_start_year"] == 2024
+        ].iloc[0]
+
+        p_2022 = row_2022["estimate"]
+        p_2024 = row_2024["estimate"]
+        se_2022 = row_2022[se_col]
+        se_2024 = row_2024[se_col]
+
+        # Standard error of the difference between two estimates
+        se_difference = (se_2022**2 + se_2024**2) ** 0.5
+
+        if se_difference <= 0:
+            st.error("The combined standard error must be greater than zero.")
+        else:
+            # Two-sided z-test
+            z_stat = (p_2024 - p_2022) / se_difference
+            p_value = 2 * norm.sf(abs(z_stat))
+
+            alpha = 0.05
+
+            st.subheader("Hypothesis test results")
+            st.metric("Z-statistic", f"{z_stat:.3f}")
+            st.metric("P-value", f"{p_value:.4f}")
+            st.write(f"Significance level: {alpha}")
+
+            if p_value < alpha:
+                st.success(
+                    "Reject H₀: the difference is statistically significant "
+                    "at the 5% level, subject to the test assumptions."
+                )
+            else:
+                st.info(
+                    "Fail to reject H₀: the available evidence does not show "
+                    "a statistically significant difference at the 5% level."
+                )
