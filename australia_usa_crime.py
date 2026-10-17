@@ -664,4 +664,6 @@ with st.expander("Methodology and limitations"):
       until its assumptions are verified.
     - **Coverage:** The API request is limited to 10,000 records.
       Confirm that the response includes all required years and categories.
+      Streamlit visualisation:
+      https://wondercleo-homicide-nibrs-australia-usa-crime-jli2ye.streamlit.app/
     """)
