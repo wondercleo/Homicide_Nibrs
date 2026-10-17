@@ -32,6 +32,9 @@ with st.expander("Research question and objectives", expanded=False):
     4. Test the change in the US firearm proportion between 2022 and 2024.
     5. Compare overlapping annual rates while recognizing differences
        between the two data sources.
+    Hypothesis:
+    - Null hypothesis (H₀): There is no statistically significant difference between the two homicide rates being compared.
+    - Alternative hypothesis (H₁): There is a statistically significant difference between the two homicide rates.
     """)
 
 
